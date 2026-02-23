@@ -1,0 +1,6 @@
+fastapi==0.110.0
+uvicorn==0.29.0
+mcp
+httpx
+requests
+beautifulsoup4
