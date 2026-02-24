@@ -13,6 +13,7 @@ import os
 import re
 import time
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, List, Dict, Optional
 from urllib.parse import urljoin, urlparse
 
@@ -68,7 +69,15 @@ def cache_set(key: str, value: Dict):
 # -------------------------
 # MCP server and helpers
 # -------------------------
-mcp = FastMCP("Company Research Tools (search+scrape)")
+mcp = FastMCP(
+    "Company Research Tools (search+scrape)",
+    host="0.0.0.0",
+    json_response=True,
+    stateless_http=True,
+)
+# Build the MCP HTTP handler once; this also initializes the session manager.
+_mcp_streamable_app = mcp.streamable_http_app()
+_mcp_http_handler = _mcp_streamable_app.routes[0].endpoint
 
 # -------------------------
 # DuckDuckGo helper (sync)
@@ -481,11 +490,19 @@ async def scrape_site(
 # -------------------------
 # REST wrapper (for Copilot Studio and manual testing)
 # -------------------------
-app = FastAPI(title="Company Research MCP Server (search + scrape)")
+@asynccontextmanager
+async def app_lifespan(_: FastAPI):
+    # When mounted inside FastAPI, child app lifespan may not run.
+    # Start MCP session manager explicitly to avoid 500 on /mcp.
+    async with mcp.session_manager.run():
+        yield
+
+
+app = FastAPI(title="Company Research MCP Server (search + scrape)", lifespan=app_lifespan)
 
 @app.get("/")
 async def root():
-    return {"status": "running", "mcp_endpoint": "/mcp"}
+    return {"status": "running", "mcp_endpoint": "/mcp/"}
 
 @app.get("/health")
 async def health():
@@ -541,5 +558,5 @@ async def extract_urls_api(payload: Dict[str, Any]):
 # -------------------------
 # Mount MCP using HTTP transport (Copilot Studio friendly)
 # -------------------------
-# For mcp>=1.x FastMCP exposes streamable_http_app()/sse_app directly.
-app.mount("/mcp", mcp.streamable_http_app())
+# Mount raw MCP handler on /mcp so endpoint is exactly /mcp.
+app.mount("/mcp", _mcp_http_handler)
