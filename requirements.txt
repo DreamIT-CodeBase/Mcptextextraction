@@ -1,5 +1,6 @@
-fastapi==0.110.0
-uvicorn==0.29.0
+fastapi
+uvicorn
+gunicorn
 mcp
 httpx
 requests
